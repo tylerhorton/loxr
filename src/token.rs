@@ -5,7 +5,7 @@ use nom::{
     character::complete::{alpha1, alphanumeric1, char, multispace0, one_of},
     combinator::{eof, map, opt, recognize, value},
     error::VerboseError,
-    multi::{many0, many1},
+    multi::{many0, many1, many_till},
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
@@ -126,10 +126,14 @@ static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map! {
     "while" => TokenType::While,
 };
 
-pub fn get_next_token(s: Span) -> Result<(Span, Token), LoxError> {
-    token(s).map_err(|e| LoxError::SyntaxError {
+pub fn get_tokens(s: Span) -> Result<(Span, Vec<Token>), LoxError> {
+    tokens(s).map_err(|e| LoxError::SyntaxError {
         details: e.to_string(),
     })
+}
+
+fn tokens(s: Span) -> Res<Span, Vec<Token>> {
+    map(many_till(token, eof), |(tokens, _)| tokens)(s)
 }
 
 fn token(s: Span) -> Res<Span, Token> {
@@ -144,8 +148,7 @@ fn token(s: Span) -> Res<Span, Token> {
         single_character_tokens,
         number,
         string,
-        identifier,
-        end_of_file,
+        identifier_or_keyword,
     )))(s)?;
 
     Ok((s, Token::new(token_type, pos)))
@@ -241,7 +244,7 @@ fn string(input: Span) -> Res<Span, TokenType> {
     })(input)
 }
 
-fn identifier(input: Span) -> Res<Span, TokenType> {
+fn identifier_or_keyword(input: Span) -> Res<Span, TokenType> {
     map(
         recognize(pair(
             alt((alpha1, tag("_"))),
@@ -252,10 +255,6 @@ fn identifier(input: Span) -> Res<Span, TokenType> {
             None => TokenType::Identifier(s.to_string()),
         },
     )(input)
-}
-
-fn end_of_file(input: Span) -> Res<Span, TokenType> {
-    value(TokenType::Eof, eof)(input)
 }
 
 #[cfg(test)]
@@ -373,16 +372,5 @@ mod tests {
         let (s, tt) = string(s).unwrap();
         assert_eq!(s.fragment(), &"");
         assert_eq!(inner_from_variant![tt, TokenType::String], "hello, world");
-    }
-
-    #[test]
-    fn test_eof() {
-        let s = Span::new("");
-        let (s, tt) = end_of_file(s).unwrap();
-        assert_eq!(s.fragment(), &"");
-        assert_eq!(tt, TokenType::Eof);
-        let s = Span::new("foo");
-        let err = end_of_file(s).unwrap_err();
-        assert_eq!(err, nom_err![(s, VEK::Nom(EK::Eof))]);
     }
 }
