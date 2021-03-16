@@ -1,8 +1,8 @@
 use crate::error::LoxError;
-use crate::token::{get_tokens, Span, Token, TokenType};
+use crate::token::{get_tokens, Span, Token, TokenKind};
 
-pub fn lex<'a>(source: &str) -> Result<Vec<Token>, LoxError> {
+pub fn lex(source: &str) -> Result<Vec<Token>, LoxError> {
     let (span, mut tokens) = get_tokens(Span::new(source))?;
-    tokens.push(Token::new(TokenType::Eof, span));
+    tokens.push(Token::new(TokenKind::Eof, span));
     Ok(tokens)
 }

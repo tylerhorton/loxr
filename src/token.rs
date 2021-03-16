@@ -20,21 +20,21 @@ pub type Span<'a> = LocatedSpan<&'a str>;
 type Res<I, O> = IResult<I, O, VerboseError<I>>;
 
 /// Token definition
-#[derive(Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Token<'a> {
-    pub token_type: TokenType,
+    pub kind: TokenKind,
     pub span: Span<'a>,
 }
 
 impl<'a> Token<'a> {
     /// Create a new token.
-    pub fn new(token_type: TokenType, span: Span<'a>) -> Self {
-        Token { token_type, span }
+    pub fn new(kind: TokenKind, span: Span<'a>) -> Self {
+        Token { kind, span }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TokenType {
+pub enum TokenKind {
     // Single-character tokens
     LeftParen,
     RightParen,
@@ -84,46 +84,46 @@ pub enum TokenType {
 }
 
 /// Map for the single character tokens.
-static CHARACTER_SEQUENCES: phf::Map<&'static str, TokenType> = phf_map! {
-    "(" => TokenType::LeftParen,
-    ")" => TokenType::RightParen,
-    "[" => TokenType::LeftBrace,
-    "]" => TokenType::RightBrace,
-    "," => TokenType::Comma,
-    "." => TokenType::Dot,
-    "+" => TokenType::Plus,
-    "-" => TokenType::Minus,
-    ";" => TokenType::Semicolon,
-    "/" => TokenType::Slash,
-    "*" => TokenType::Star,
-    "!" => TokenType::Bang,
-    "!=" => TokenType::BangEqual,
-    "=" => TokenType::Equal,
-    "==" => TokenType::EqualEqual,
-    ">" => TokenType::Greater,
-    ">=" => TokenType::GreaterEqual,
-    "<" => TokenType::Less,
-    "<=" => TokenType::LessEqual,
+static CHARACTER_SEQUENCES: phf::Map<&'static str, TokenKind> = phf_map! {
+    "(" => TokenKind::LeftParen,
+    ")" => TokenKind::RightParen,
+    "[" => TokenKind::LeftBrace,
+    "]" => TokenKind::RightBrace,
+    "," => TokenKind::Comma,
+    "." => TokenKind::Dot,
+    "+" => TokenKind::Plus,
+    "-" => TokenKind::Minus,
+    ";" => TokenKind::Semicolon,
+    "/" => TokenKind::Slash,
+    "*" => TokenKind::Star,
+    "!" => TokenKind::Bang,
+    "!=" => TokenKind::BangEqual,
+    "=" => TokenKind::Equal,
+    "==" => TokenKind::EqualEqual,
+    ">" => TokenKind::Greater,
+    ">=" => TokenKind::GreaterEqual,
+    "<" => TokenKind::Less,
+    "<=" => TokenKind::LessEqual,
 };
 
 /// Map for the reserved keywords.
-static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map! {
-    "and" => TokenType::And,
-    "class" => TokenType::Class,
-    "else" => TokenType::Else,
-    "false" => TokenType::False,
-    "fun" => TokenType::Fun,
-    "for" => TokenType::For,
-    "if" => TokenType::If,
-    "nil" => TokenType::Nil,
-    "or" => TokenType::Or,
-    "print" => TokenType::Print,
-    "return" => TokenType::Return,
-    "super" => TokenType::Super,
-    "this" => TokenType::This,
-    "true" => TokenType::True,
-    "var" => TokenType::Var,
-    "while" => TokenType::While,
+static KEYWORDS: phf::Map<&'static str, TokenKind> = phf_map! {
+    "and" => TokenKind::And,
+    "class" => TokenKind::Class,
+    "else" => TokenKind::Else,
+    "false" => TokenKind::False,
+    "fun" => TokenKind::Fun,
+    "for" => TokenKind::For,
+    "if" => TokenKind::If,
+    "nil" => TokenKind::Nil,
+    "or" => TokenKind::Or,
+    "print" => TokenKind::Print,
+    "return" => TokenKind::Return,
+    "super" => TokenKind::Super,
+    "this" => TokenKind::This,
+    "true" => TokenKind::True,
+    "var" => TokenKind::Var,
+    "while" => TokenKind::While,
 };
 
 pub fn get_tokens(s: Span) -> Result<(Span, Vec<Token>), LoxError> {
@@ -138,7 +138,7 @@ fn tokens(s: Span) -> Res<Span, Vec<Token>> {
 
 fn token(s: Span) -> Res<Span, Token> {
     let (s, pos) = position(s)?;
-    let (s, token_type) = ws(alt((
+    let (s, kind) = ws(alt((
         // Order of two character tokens before one character tokens is
         // important or else two character tokens will never be chosen.
         // Additionally, comments need to be before signal character tokens so
@@ -151,10 +151,10 @@ fn token(s: Span) -> Res<Span, Token> {
         identifier_or_keyword,
     )))(s)?;
 
-    Ok((s, Token::new(token_type, pos)))
+    Ok((s, Token::new(kind, pos)))
 }
 
-fn double_character_tokens(s: Span) -> Res<Span, TokenType> {
+fn double_character_tokens(s: Span) -> Res<Span, TokenKind> {
     alt((
         character_sequence("!="),
         character_sequence("=="),
@@ -163,7 +163,7 @@ fn double_character_tokens(s: Span) -> Res<Span, TokenType> {
     ))(s)
 }
 
-fn single_character_tokens(s: Span) -> Res<Span, TokenType> {
+fn single_character_tokens(s: Span) -> Res<Span, TokenKind> {
     alt((
         character_sequence("!"),
         character_sequence("="),
@@ -190,17 +190,17 @@ where
     delimited(multispace0, inner, multispace0)
 }
 
-fn comment(input: Span) -> Res<Span, TokenType> {
+fn comment(input: Span) -> Res<Span, TokenKind> {
     map(preceded(tag("//"), ws(is_not("\n\r"))), |s| {
-        TokenType::Comment(s.fragment().trim().to_string())
+        TokenKind::Comment(s.fragment().trim().to_string())
     })(input)
 }
 
-fn character_sequence<'a>(seq: &'static str) -> impl FnMut(Span<'a>) -> Res<Span<'a>, TokenType> {
-    let token_type = CHARACTER_SEQUENCES
+fn character_sequence<'a>(seq: &'static str) -> impl FnMut(Span<'a>) -> Res<Span<'a>, TokenKind> {
+    let kind = CHARACTER_SEQUENCES
         .get(seq)
         .expect("invalid character sequence given");
-    value(token_type.clone(), tag(seq))
+    value(kind.clone(), tag(seq))
 }
 
 fn decimal(input: Span) -> Res<Span, Span> {
@@ -230,21 +230,21 @@ fn number_dot_number(input: Span) -> Res<Span, Span> {
     recognize(tuple((decimal, char('.'), opt(decimal))))(input)
 }
 
-fn number(input: Span) -> Res<Span, TokenType> {
+fn number(input: Span) -> Res<Span, TokenKind> {
     map(
         alt((dot_number, exponent_number, number_dot_number)),
         // Conversion from string to f64 won't fail assuming parsing isn't buggy
-        |s| TokenType::Number(f64::from_str(s.fragment()).unwrap()),
+        |s| TokenKind::Number(f64::from_str(s.fragment()).unwrap()),
     )(input)
 }
 
-fn string(input: Span) -> Res<Span, TokenType> {
+fn string(input: Span) -> Res<Span, TokenKind> {
     map(delimited(tag("\""), is_not("\""), tag("\"")), |s: Span| {
-        TokenType::String(s.fragment().to_string())
+        TokenKind::String(s.fragment().to_string())
     })(input)
 }
 
-fn identifier_or_keyword(input: Span) -> Res<Span, TokenType> {
+fn identifier_or_keyword(input: Span) -> Res<Span, TokenKind> {
     map(
         recognize(pair(
             alt((alpha1, tag("_"))),
@@ -252,7 +252,7 @@ fn identifier_or_keyword(input: Span) -> Res<Span, TokenType> {
         )),
         |s: Span| match KEYWORDS.get(*s.fragment()).cloned() {
             Some(keyword) => keyword,
-            None => TokenType::Identifier(s.to_string()),
+            None => TokenKind::Identifier(s.to_string()),
         },
     )(input)
 }
@@ -303,7 +303,7 @@ mod tests {
         let s = Span::new("// hello, world \n foo");
         let (s, tt) = comment(s).unwrap();
         assert_eq!(s.fragment(), &"foo");
-        assert_eq!(inner_from_variant![tt, TokenType::Comment], "hello, world");
+        assert_eq!(inner_from_variant![tt, TokenKind::Comment], "hello, world");
     }
 
     #[test]
@@ -311,7 +311,7 @@ mod tests {
         let s1 = Span::new("(foo)");
         let (s2, tt) = character_sequence("(")(s1).unwrap();
         assert_eq!(s2.fragment(), &"foo)");
-        assert_eq!(tt, TokenType::LeftParen);
+        assert_eq!(tt, TokenKind::LeftParen);
         let err = character_sequence("(")(s2).unwrap_err();
         assert_eq!(err, nom_err![(s2, VEK::Nom(EK::Tag))]);
     }
@@ -347,23 +347,23 @@ mod tests {
         let s = Span::new(".10");
         let (s, tt) = number(s).unwrap();
         assert_eq!(s.fragment(), &"");
-        assert_approx_eq!(0.1 as f64, inner_from_variant![tt, TokenType::Number]);
+        assert_approx_eq!(0.1 as f64, inner_from_variant![tt, TokenKind::Number]);
         let s = Span::new("10e10");
         let (s, tt) = number(s).unwrap();
         assert_eq!(s.fragment(), &"");
-        assert_approx_eq!(10e10 as f64, inner_from_variant![tt, TokenType::Number]);
+        assert_approx_eq!(10e10 as f64, inner_from_variant![tt, TokenKind::Number]);
         let s = Span::new("10.10e10");
         let (s, tt) = number(s).unwrap();
         assert_eq!(s.fragment(), &"");
-        assert_approx_eq!(10.10e10 as f64, inner_from_variant![tt, TokenType::Number]);
+        assert_approx_eq!(10.10e10 as f64, inner_from_variant![tt, TokenKind::Number]);
         let s = Span::new("10.");
         let (s, tt) = number(s).unwrap();
         assert_eq!(s.fragment(), &"");
-        assert_approx_eq!(10 as f64, inner_from_variant![tt, TokenType::Number]);
+        assert_approx_eq!(10 as f64, inner_from_variant![tt, TokenKind::Number]);
         let s = Span::new("10.10");
         let (s, tt) = number(s).unwrap();
         assert_eq!(s.fragment(), &"");
-        assert_approx_eq!(10.10 as f64, inner_from_variant![tt, TokenType::Number]);
+        assert_approx_eq!(10.10 as f64, inner_from_variant![tt, TokenKind::Number]);
     }
 
     #[test]
@@ -371,6 +371,6 @@ mod tests {
         let s = Span::new("\"hello, world\"");
         let (s, tt) = string(s).unwrap();
         assert_eq!(s.fragment(), &"");
-        assert_eq!(inner_from_variant![tt, TokenType::String], "hello, world");
+        assert_eq!(inner_from_variant![tt, TokenKind::String], "hello, world");
     }
 }
