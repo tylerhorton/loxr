@@ -1,4 +1,5 @@
 use crate::token::Token;
+use std::fmt;
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum Expr<'a> {
@@ -32,5 +33,16 @@ impl<'a> Expr<'a> {
 
     pub fn new_grouping(expr: Expr<'a>) -> Self {
         Expr::Grouping(Box::new(expr))
+    }
+}
+
+impl<'a> fmt::Display for Expr<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            Expr::Literal(expr) => write!(f, "{}", expr),
+            Expr::Unary(op, expr) => write!(f, "({} {})", op, expr),
+            Expr::Binary(right, op, left) => write!(f, "({} {} {})", op, right, left),
+            Expr::Grouping(expr) => write!(f, "(group {})", expr),
+        }
     }
 }

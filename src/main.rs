@@ -44,7 +44,7 @@ fn run(source: String) -> Result<()> {
     println!("Parsing...");
     let expr = parser::parse(&tokens)?;
 
-    println!("{:#?}", expr);
+    println!("{}", expr);
 
     Ok(())
 }
