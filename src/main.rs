@@ -1,8 +1,10 @@
 use anyhow::{anyhow, Result};
 use std::{env, fs, io, io::prelude::*};
 
+mod ast;
 mod error;
 mod lexer;
+mod parser;
 mod token;
 
 fn main() -> Result<()> {
@@ -37,11 +39,12 @@ fn run_prompt() -> Result<()> {
 }
 
 fn run(source: String) -> Result<()> {
+    println!("Lexing...");
     let tokens = lexer::lex(&source)?;
+    println!("Parsing...");
+    let expr = parser::parse(&tokens)?;
 
-    for token in tokens {
-        println!("{:?}", token);
-    }
+    println!("{:#?}", expr);
 
     Ok(())
 }
