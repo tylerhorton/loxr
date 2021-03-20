@@ -3,8 +3,8 @@ use crate::token::{Span, Token, TokenKind, CHARACTER_SEQUENCES, KEYWORDS};
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag},
-    character::complete::{alpha1, alphanumeric1, char, multispace0, one_of},
-    combinator::{eof, map, opt, recognize, value},
+    character::complete::{alpha1, alphanumeric1, anychar, char, multispace0, one_of},
+    combinator::{eof, map, opt, peek, recognize, value},
     error::VerboseError,
     multi::{many0, many1, many_till},
     sequence::{delimited, pair, preceded, terminated, tuple},
@@ -14,52 +14,82 @@ use nom_locate::position;
 use std::str::FromStr;
 
 pub fn lex(source: &str) -> Result<Vec<Token>, LoxError> {
-    let (span, mut tokens) = get_tokens(Span::new(source))?;
-    tokens.push(Token::new(TokenKind::Eof, span));
-    Ok(tokens)
+    let (_, tokens) = tokens(Span::new(source)).map_err(|e| LoxError::SyntaxError {
+        details: e.to_string(),
+    })?;
+
+    let errors = tokens
+        .iter()
+        .filter(|t| match t.kind {
+            TokenKind::UnexpectedCharacters(_) => true,
+            _ => false,
+        })
+        .map(|t| t.to_string())
+        .collect::<Vec<String>>();
+
+    if errors.is_empty() {
+        Ok(tokens)
+    } else {
+        Err(LoxError::UnexpectedCharacters { details: errors })
+    }
 }
 
 // Result type used by the token parsers.
-type Res<I, O> = IResult<I, O, VerboseError<I>>;
+type LexRes<'a, O> = IResult<Span<'a>, O, VerboseError<Span<'a>>>;
 
-fn get_tokens(s: Span) -> Result<(Span, Vec<Token>), LoxError> {
-    tokens(s).map_err(|e| LoxError::SyntaxError {
-        details: e.to_string(),
-    })
+fn tokens(input: Span) -> LexRes<Vec<Token>> {
+    map(many_till(token_or_unexpected, eof), |(tokens, _)| tokens)(input)
 }
 
-fn tokens(s: Span) -> Res<Span, Vec<Token>> {
-    map(many_till(token, eof), |(tokens, _)| tokens)(s)
+fn token_or_unexpected(input: Span) -> LexRes<Token> {
+    let (input, pos) = position(input)?;
+
+    // Handle unexpected characters just like any other token. After all
+    // tokens have been lexed, a pass will be made through the tokens to
+    // determine if any unexpected characters exist. If they do, the
+    // interpreter will report the errors and not proceed to parsing.
+    let (input, kind) = alt((token, unexpected_characters))(input)?;
+
+    Ok((input, Token::new(kind, pos)))
 }
 
-fn token(s: Span) -> Res<Span, Token> {
-    let (s, pos) = position(s)?;
-    let (s, kind) = ws(alt((
-        // Order of two character tokens before one character tokens is
-        // important or else two character tokens will never be chosen.
-        // Additionally, comments need to be before signal character tokens so
-        // that "//" is chosen.
+fn token(input: Span) -> LexRes<TokenKind> {
+    // Order of two character tokens before one character tokens is
+    // important or else two character tokens will never be chosen.
+    // Additionally, comments need to be before signal character tokens so
+    // that "//" is chosen.
+    ws(alt((
         comment,
         double_character_tokens,
         single_character_tokens,
         number,
         string,
         identifier_or_keyword,
-    )))(s)?;
-
-    Ok((s, Token::new(kind, pos)))
+    )))(input)
 }
 
-fn double_character_tokens(s: Span) -> Res<Span, TokenKind> {
+fn unexpected_characters(input: Span) -> LexRes<TokenKind> {
+    // Take all of the unexpected characters until a valid token can be lexed or
+    // until the end of file is reached.
+    map(
+        recognize(many_till(
+            anychar,
+            peek(alt((discard(token), discard(eof)))),
+        )),
+        |s| TokenKind::UnexpectedCharacters(s.fragment().to_string()),
+    )(input)
+}
+
+fn double_character_tokens(input: Span) -> LexRes<TokenKind> {
     alt((
         character_sequence("!="),
         character_sequence("=="),
         character_sequence(">="),
         character_sequence("<="),
-    ))(s)
+    ))(input)
 }
 
-fn single_character_tokens(s: Span) -> Res<Span, TokenKind> {
+fn single_character_tokens(input: Span) -> LexRes<TokenKind> {
     alt((
         character_sequence("!"),
         character_sequence("="),
@@ -76,43 +106,50 @@ fn single_character_tokens(s: Span) -> Res<Span, TokenKind> {
         character_sequence(";"),
         character_sequence("/"),
         character_sequence("*"),
-    ))(s)
+    ))(input)
 }
 
-fn ws<'a, O, F>(inner: F) -> impl FnMut(Span<'a>) -> Res<Span<'a>, O>
+fn ws<'a, O, F>(inner: F) -> impl FnMut(Span<'a>) -> LexRes<O>
 where
-    F: FnMut(Span<'a>) -> Res<Span, O> + 'a,
+    F: FnMut(Span<'a>) -> LexRes<O> + 'a,
 {
     delimited(multispace0, inner, multispace0)
 }
 
-fn comment(input: Span) -> Res<Span, TokenKind> {
+fn discard<'a, O, F>(parser: F) -> impl FnMut(Span<'a>) -> LexRes<()>
+where
+    F: FnMut(Span<'a>) -> LexRes<O> + 'a,
+{
+    value((), parser)
+}
+
+fn comment(input: Span) -> LexRes<TokenKind> {
     map(preceded(tag("//"), ws(is_not("\n\r"))), |s| {
         TokenKind::Comment(s.fragment().trim().to_string())
     })(input)
 }
 
-fn character_sequence<'a>(seq: &'static str) -> impl FnMut(Span<'a>) -> Res<Span<'a>, TokenKind> {
+fn character_sequence<'a>(seq: &'static str) -> impl FnMut(Span<'a>) -> LexRes<TokenKind> {
     let kind = CHARACTER_SEQUENCES
         .get(seq)
         .expect("invalid character sequence given");
     value(kind.clone(), tag(seq))
 }
 
-fn decimal(input: Span) -> Res<Span, Span> {
+fn decimal(input: Span) -> LexRes<Span> {
     recognize(many1(terminated(one_of("0123456789"), many0(char('_')))))(input)
 }
 
-fn exponent(input: Span) -> Res<Span, Span> {
+fn exponent(input: Span) -> LexRes<Span> {
     recognize(tuple((one_of("eE"), opt(one_of("+-")), decimal)))(input)
 }
 
-fn dot_number(input: Span) -> Res<Span, Span> {
+fn dot_number(input: Span) -> LexRes<Span> {
     // Case one: .42
     recognize(tuple((char('.'), decimal, opt(exponent))))(input)
 }
 
-fn exponent_number(input: Span) -> Res<Span, Span> {
+fn exponent_number(input: Span) -> LexRes<Span> {
     // Case two: 42e42 and 42.42e42
     recognize(tuple((
         decimal,
@@ -121,12 +158,12 @@ fn exponent_number(input: Span) -> Res<Span, Span> {
     )))(input)
 }
 
-fn number_dot_number(input: Span) -> Res<Span, Span> {
+fn number_dot_number(input: Span) -> LexRes<Span> {
     // Case three: 42. and 42.42
     recognize(tuple((decimal, char('.'), opt(decimal))))(input)
 }
 
-fn number(input: Span) -> Res<Span, TokenKind> {
+fn number(input: Span) -> LexRes<TokenKind> {
     map(
         alt((dot_number, exponent_number, number_dot_number, decimal)),
         // Conversion from string to f64 won't fail assuming parsing isn't buggy
@@ -134,13 +171,13 @@ fn number(input: Span) -> Res<Span, TokenKind> {
     )(input)
 }
 
-fn string(input: Span) -> Res<Span, TokenKind> {
+fn string(input: Span) -> LexRes<TokenKind> {
     map(delimited(tag("\""), is_not("\""), tag("\"")), |s: Span| {
         TokenKind::String(s.fragment().to_string())
     })(input)
 }
 
-fn identifier_or_keyword(input: Span) -> Res<Span, TokenKind> {
+fn identifier_or_keyword(input: Span) -> LexRes<TokenKind> {
     map(
         recognize(pair(
             alt((alpha1, tag("_"))),

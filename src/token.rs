@@ -69,10 +69,9 @@ pub enum TokenKind {
     True,
     Var,
     While,
-    // Discardable tokens
+    // Discardable or invalid tokens
     Comment(String),
-    // End of file
-    Eof,
+    UnexpectedCharacters(String),
 }
 
 impl fmt::Display for TokenKind {
@@ -117,7 +116,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Var => write!(f, "var"),
             TokenKind::While => write!(f, "while"),
             TokenKind::Comment(s) => write!(f, "{}", s),
-            TokenKind::Eof => write!(f, ""),
+            TokenKind::UnexpectedCharacters(s) => write!(f, "{}", s),
         }
     }
 }
