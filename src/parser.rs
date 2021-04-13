@@ -1,66 +1,71 @@
 use crate::ast::Expr;
-use crate::error::LoxError;
+use crate::error::{Error, ReportError};
+use crate::stream::TokenStream;
 use crate::token::{Token, TokenKind};
 use nom::{
     branch::alt,
-    combinator::{map, verify},
-    error::VerboseError,
-    error::{ErrorKind as EK, VerboseError as VE, VerboseErrorKind as VEK},
+    combinator::{map, value, verify},
+    error::{Error as NomError, ErrorKind as NomErrorKind},
     multi::many0,
     sequence::{delimited, pair},
-    Err as NE, IResult,
+    Err, IResult,
 };
+use std::cell::RefCell;
 
-type Res<I, O> = IResult<I, O, VerboseError<I>>;
-type ParseRes<'a> = Res<&'a [Token<'a>], Expr<'a>>;
+pub type Tokens<'a> = TokenStream<'a, &'a RefCell<Vec<Error>>>;
 
-pub fn parse<'a>(tokens: &'a Vec<Token<'a>>) -> Result<Expr, LoxError> {
-    expr(tokens)
-        .map(|(_, expr)| expr)
-        .map_err(|e| LoxError::SyntaxError {
-            details: e.to_string(),
-        })
+impl<'a> ReportError for Tokens<'a> {
+    fn report_error(&self, error: Error) {
+        self.extra.borrow_mut().push(error);
+    }
 }
 
-macro_rules! nom_err {
-    ( $( $x:expr ),+ $(,)?) => {{
-        NE::Error(VE {
-            errors: vec![$($x),*]
-        })
-    }};
+type ParseRes<'a> = IResult<Tokens<'a>, Expr>;
+
+pub fn parse(tokens: &[Token]) -> (Expr, Vec<Error>) {
+    let errors = RefCell::new(Vec::new());
+    let input = TokenStream::new(tokens, &errors);
+
+    let (_, expr) = expr(input).expect("parser cannot fail");
+
+    (expr, errors.into_inner())
 }
 
-fn expr<'a>(input: &'a [Token]) -> ParseRes<'a> {
-    equality(input)
+fn expr(input: Tokens) -> ParseRes {
+    alt((equality, error))(input)
 }
 
-fn any_token<'a>(input: &'a [Token<'a>]) -> Res<&'a [Token], &'a Token> {
+fn any_token(input: Tokens) -> IResult<Tokens, &Token> {
     let mut index = 0;
 
-    while let Some(token) = input.get(index) {
+    while let Some(token) = input.tokens.get(index) {
         index += 1;
         match token.kind {
             TokenKind::Comment(_) => continue,
-            _ => return Ok((&input[index..], token)),
+            _ => return Ok((input.index(index..), token)),
         }
     }
 
-    Err(nom_err![(input, VEK::Nom(EK::Tag))])
+    Err(Err::Error(NomError::new(input, NomErrorKind::Eof)))
 }
 
 macro_rules! token_kind (
 	($($p:pat),+ $(,)?) => ({
         |input| {
-            let is_type = |t: &Token| match t.kind {
+            let is_kind = |t: &Token| match t.kind {
                 $($p)|* => true,
                 _ => false,
             };
-            verify(any_token, is_type)(input)
+            verify(any_token, is_kind)(input)
         }
 	});
 );
 
-fn equality<'a>(input: &'a [Token]) -> ParseRes<'a> {
+fn error(input: Tokens) -> ParseRes {
+    value(Expr::Error, any_token)(input)
+}
+
+fn equality(input: Tokens) -> ParseRes {
     let ops = token_kind!(TokenKind::BangEqual, TokenKind::EqualEqual);
 
     let (input, mut left) = comparison(input)?;
@@ -73,7 +78,7 @@ fn equality<'a>(input: &'a [Token]) -> ParseRes<'a> {
     Ok((input, left))
 }
 
-fn comparison<'a>(input: &'a [Token]) -> ParseRes<'a> {
+fn comparison(input: Tokens) -> ParseRes {
     let ops = token_kind!(
         TokenKind::Greater,
         TokenKind::GreaterEqual,
@@ -91,7 +96,7 @@ fn comparison<'a>(input: &'a [Token]) -> ParseRes<'a> {
     Ok((input, left))
 }
 
-fn term<'a>(input: &'a [Token]) -> ParseRes<'a> {
+fn term(input: Tokens) -> ParseRes {
     let ops = token_kind!(TokenKind::Minus, TokenKind::Plus);
 
     let (input, mut left) = factor(input)?;
@@ -104,7 +109,7 @@ fn term<'a>(input: &'a [Token]) -> ParseRes<'a> {
     Ok((input, left))
 }
 
-fn factor<'a>(input: &'a [Token]) -> ParseRes<'a> {
+fn factor(input: Tokens) -> ParseRes {
     let ops = token_kind!(TokenKind::Slash, TokenKind::Star);
 
     let (input, mut left) = unary(input)?;
@@ -117,18 +122,18 @@ fn factor<'a>(input: &'a [Token]) -> ParseRes<'a> {
     Ok((input, left))
 }
 
-fn unary<'a>(input: &'a [Token]) -> ParseRes<'a> {
+fn unary(input: Tokens) -> ParseRes {
     let ops = token_kind!(TokenKind::Bang, TokenKind::Minus);
     let unary_expr = map(pair(ops, unary), Expr::new_unary);
 
     alt((unary_expr, primary))(input)
 }
 
-fn primary<'a>(input: &'a [Token]) -> ParseRes<'a> {
+fn primary(input: Tokens) -> ParseRes {
     alt((literal, grouping))(input)
 }
 
-fn literal<'a>(input: &'a [Token]) -> ParseRes<'a> {
+fn literal(input: Tokens) -> ParseRes {
     let literal_token = token_kind!(
         TokenKind::False,
         TokenKind::True,
@@ -140,7 +145,7 @@ fn literal<'a>(input: &'a [Token]) -> ParseRes<'a> {
     map(literal_token, Expr::new_literal)(input)
 }
 
-fn grouping<'a>(input: &'a [Token]) -> ParseRes<'a> {
+fn grouping(input: Tokens) -> ParseRes {
     map(
         delimited(
             token_kind!(TokenKind::LeftParen),

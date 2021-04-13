@@ -4,7 +4,9 @@ use std::{env, fs, io, io::prelude::*};
 mod ast;
 mod error;
 mod lexer;
+mod location;
 mod parser;
+mod stream;
 mod token;
 
 fn main() -> Result<()> {
@@ -39,12 +41,23 @@ fn run_prompt() -> Result<()> {
 }
 
 fn run(source: String) -> Result<()> {
-    println!("Lexing...");
-    let tokens = lexer::lex(&source)?;
-    println!("Parsing...");
-    let expr = parser::parse(&tokens)?;
+    println!("Lexing...\n");
 
-    println!("{}", expr);
+    let (tokens, lex_errors) = lexer::lex(source.as_str());
+
+    println!("{:?}\n", tokens);
+    if lex_errors.len() > 0 {
+        println!("{:?}\n", lex_errors);
+    }
+
+    println!("Parsing...\n");
+
+    let (expr, parse_errors) = parser::parse(tokens.as_slice());
+
+    println!("{:?}\n", expr);
+    if parse_errors.len() > 0 {
+        println!("{:?}", parse_errors);
+    }
 
     Ok(())
 }

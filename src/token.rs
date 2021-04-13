@@ -1,25 +1,45 @@
+use crate::error::{Error, ReportError};
+use crate::location::{Location, ToLocation};
 use nom_locate::LocatedSpan;
 use phf::phf_map;
+use std::cell::RefCell;
 use std::fmt;
 
 /// Input type for the token parsers that tracks position information.
-pub type Span<'a> = LocatedSpan<&'a str>;
+pub type Span<'a> = LocatedSpan<&'a str, &'a RefCell<Vec<Error>>>;
 
-/// Token definition
-#[derive(PartialEq, Clone, Debug)]
-pub struct Token<'a> {
-    pub kind: TokenKind,
-    pub span: Span<'a>,
-}
-
-impl<'a> Token<'a> {
-    /// Create a new token.
-    pub fn new(kind: TokenKind, span: Span<'a>) -> Self {
-        Token { kind, span }
+impl<'a> ToLocation for Span<'a> {
+    fn to_location(&self) -> Location {
+        let start = self.location_offset();
+        let end = start + self.fragment().len();
+        Location::new(self.location_line() as usize, self.get_column(), start..end)
     }
 }
 
-impl<'a> fmt::Display for Token<'a> {
+impl<'a> ReportError for Span<'a> {
+    fn report_error(&self, error: Error) {
+        self.extra.borrow_mut().push(error);
+    }
+}
+
+/// Token definition
+#[derive(Debug, Clone, PartialEq)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub location: Location,
+}
+
+impl Token {
+    /// Create a new token.
+    pub fn new(kind: TokenKind, span: Span) -> Self {
+        Token {
+            kind,
+            location: span.to_location(),
+        }
+    }
+}
+
+impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.kind)
     }
@@ -69,9 +89,10 @@ pub enum TokenKind {
     True,
     Var,
     While,
-    // Discardable or invalid tokens
+    // Comments
     Comment(String),
-    UnexpectedCharacters(String),
+    // Error placeholder
+    Error,
 }
 
 impl fmt::Display for TokenKind {
@@ -116,7 +137,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Var => write!(f, "var"),
             TokenKind::While => write!(f, "while"),
             TokenKind::Comment(s) => write!(f, "{}", s),
-            TokenKind::UnexpectedCharacters(s) => write!(f, "{}", s),
+            TokenKind::Error => write!(f, "error"),
         }
     }
 }
