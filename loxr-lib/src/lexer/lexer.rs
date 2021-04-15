@@ -1,4 +1,5 @@
-use crate::data::token::{Span, Token, TokenKind, CHARACTER_SEQUENCES, KEYWORDS};
+use super::input::Span;
+use crate::data::token::{Token, TokenKind, CHARACTER_SEQUENCES, KEYWORDS};
 use crate::error::{expect, Error, ReportError};
 use crate::location::ToLocation;
 use nom::{
@@ -50,7 +51,7 @@ fn token(input: Span) -> LexRes<Token> {
         identifier_or_keyword,
     ))))(input)?;
 
-    Ok((output, Token::new(kind, span)))
+    Ok((output, Token::new(kind, span.to_location())))
 }
 
 fn unexpected_characters(input: Span) -> LexRes<Token> {
@@ -67,7 +68,7 @@ fn unexpected_characters(input: Span) -> LexRes<Token> {
             format!("unexpected characters: \"{}\"", s.fragment()),
         );
         s.report_error(err);
-        Token::new(TokenKind::Error, s)
+        Token::new(TokenKind::Error, s.to_location())
     };
 
     map(chars_until_token, report_error)(input)

@@ -1,26 +1,6 @@
-use crate::error::{Error, ReportError};
-use crate::location::{Location, ToLocation};
-use nom_locate::LocatedSpan;
+use crate::location::Location;
 use phf::phf_map;
-use std::cell::RefCell;
 use std::fmt;
-
-/// Input type for the token parsers that tracks position information.
-pub type Span<'a> = LocatedSpan<&'a str, &'a RefCell<Vec<Error>>>;
-
-impl<'a> ToLocation for Span<'a> {
-    fn to_location(&self) -> Location {
-        let start = self.location_offset();
-        let end = start + self.fragment().len();
-        Location::new(self.location_line() as usize, self.get_column(), start..end)
-    }
-}
-
-impl<'a> ReportError for Span<'a> {
-    fn report_error(&self, error: Error) {
-        self.extra.borrow_mut().push(error);
-    }
-}
 
 /// Token definition
 #[derive(Debug, Clone, PartialEq)]
@@ -31,11 +11,8 @@ pub struct Token {
 
 impl Token {
     /// Create a new token.
-    pub fn new(kind: TokenKind, span: Span) -> Self {
-        Token {
-            kind,
-            location: span.to_location(),
-        }
+    pub fn new(kind: TokenKind, location: Location) -> Self {
+        Token { kind, location }
     }
 }
 

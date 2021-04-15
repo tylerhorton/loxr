@@ -1,7 +1,7 @@
-use super::stream::TokenStream;
+use super::input::TokenSpan;
 use crate::data::ast::Expr;
 use crate::data::token::{Token, TokenKind};
-use crate::error::{Error, ReportError};
+use crate::error::Error;
 use nom::{
     branch::alt,
     combinator::{map, value, verify},
@@ -12,30 +12,22 @@ use nom::{
 };
 use std::cell::RefCell;
 
-pub type Tokens<'a> = TokenStream<'a, &'a RefCell<Vec<Error>>>;
-
-impl<'a> ReportError for Tokens<'a> {
-    fn report_error(&self, error: Error) {
-        self.extra.borrow_mut().push(error);
-    }
-}
-
-type ParseRes<'a> = IResult<Tokens<'a>, Expr>;
-
 pub fn parse(tokens: &[Token]) -> (Expr, Vec<Error>) {
     let errors = RefCell::new(Vec::new());
-    let input = TokenStream::new(tokens, &errors);
+    let input = TokenSpan::new(tokens, &errors);
 
     let (_, expr) = expr(input).expect("parser cannot fail");
 
     (expr, errors.into_inner())
 }
 
-fn expr(input: Tokens) -> ParseRes {
+type ParseRes<'a> = IResult<TokenSpan<'a>, Expr>;
+
+fn expr(input: TokenSpan) -> ParseRes {
     alt((equality, error))(input)
 }
 
-fn any_token(input: Tokens) -> IResult<Tokens, &Token> {
+fn any_token(input: TokenSpan) -> IResult<TokenSpan, &Token> {
     let mut index = 0;
 
     while let Some(token) = input.tokens.get(index) {
@@ -61,11 +53,11 @@ macro_rules! token_kind (
 	});
 );
 
-fn error(input: Tokens) -> ParseRes {
+fn error(input: TokenSpan) -> ParseRes {
     value(Expr::Error, any_token)(input)
 }
 
-fn equality(input: Tokens) -> ParseRes {
+fn equality(input: TokenSpan) -> ParseRes {
     let ops = token_kind!(TokenKind::BangEqual, TokenKind::EqualEqual);
 
     let (input, mut left) = comparison(input)?;
@@ -78,7 +70,7 @@ fn equality(input: Tokens) -> ParseRes {
     Ok((input, left))
 }
 
-fn comparison(input: Tokens) -> ParseRes {
+fn comparison(input: TokenSpan) -> ParseRes {
     let ops = token_kind!(
         TokenKind::Greater,
         TokenKind::GreaterEqual,
@@ -96,7 +88,7 @@ fn comparison(input: Tokens) -> ParseRes {
     Ok((input, left))
 }
 
-fn term(input: Tokens) -> ParseRes {
+fn term(input: TokenSpan) -> ParseRes {
     let ops = token_kind!(TokenKind::Minus, TokenKind::Plus);
 
     let (input, mut left) = factor(input)?;
@@ -109,7 +101,7 @@ fn term(input: Tokens) -> ParseRes {
     Ok((input, left))
 }
 
-fn factor(input: Tokens) -> ParseRes {
+fn factor(input: TokenSpan) -> ParseRes {
     let ops = token_kind!(TokenKind::Slash, TokenKind::Star);
 
     let (input, mut left) = unary(input)?;
@@ -122,18 +114,18 @@ fn factor(input: Tokens) -> ParseRes {
     Ok((input, left))
 }
 
-fn unary(input: Tokens) -> ParseRes {
+fn unary(input: TokenSpan) -> ParseRes {
     let ops = token_kind!(TokenKind::Bang, TokenKind::Minus);
     let unary_expr = map(pair(ops, unary), Expr::new_unary);
 
     alt((unary_expr, primary))(input)
 }
 
-fn primary(input: Tokens) -> ParseRes {
+fn primary(input: TokenSpan) -> ParseRes {
     alt((literal, grouping))(input)
 }
 
-fn literal(input: Tokens) -> ParseRes {
+fn literal(input: TokenSpan) -> ParseRes {
     let literal_token = token_kind!(
         TokenKind::False,
         TokenKind::True,
@@ -145,7 +137,7 @@ fn literal(input: Tokens) -> ParseRes {
     map(literal_token, Expr::new_literal)(input)
 }
 
-fn grouping(input: Tokens) -> ParseRes {
+fn grouping(input: TokenSpan) -> ParseRes {
     map(
         delimited(
             token_kind!(TokenKind::LeftParen),

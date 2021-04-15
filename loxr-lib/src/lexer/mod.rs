@@ -1,2 +1,3 @@
-pub mod lexer;
+mod input;
+mod lexer;
 pub use lexer::lex;

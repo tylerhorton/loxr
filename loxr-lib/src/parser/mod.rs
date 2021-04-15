@@ -1,3 +1,3 @@
-pub mod parser;
+mod input;
+mod parser;
 pub use parser::parse;
-mod stream;
