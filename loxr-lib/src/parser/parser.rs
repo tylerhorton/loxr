@@ -1,7 +1,7 @@
-use crate::ast::Expr;
+use super::stream::TokenStream;
+use crate::data::ast::Expr;
+use crate::data::token::{Token, TokenKind};
 use crate::error::{Error, ReportError};
-use crate::stream::TokenStream;
-use crate::token::{Token, TokenKind};
 use nom::{
     branch::alt,
     combinator::{map, value, verify},

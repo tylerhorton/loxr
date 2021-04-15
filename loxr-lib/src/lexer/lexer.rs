@@ -1,6 +1,6 @@
+use crate::data::token::{Span, Token, TokenKind, CHARACTER_SEQUENCES, KEYWORDS};
 use crate::error::{expect, Error, ReportError};
 use crate::location::ToLocation;
-use crate::token::{Span, Token, TokenKind, CHARACTER_SEQUENCES, KEYWORDS};
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_until},

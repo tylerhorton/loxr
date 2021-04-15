@@ -1,13 +1,6 @@
 use anyhow::{anyhow, Result};
+use loxr_lib::{lexer, parser};
 use std::{env, fs, io, io::prelude::*};
-
-mod ast;
-mod error;
-mod lexer;
-mod location;
-mod parser;
-mod stream;
-mod token;
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();

@@ -1,0 +1,9 @@
+[package]
+name = "loxr_cli"
+version = "0.1.0"
+authors = ["Tyler Horton <tylerhortonc@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+loxr_lib = { path = "../loxr-lib" }
+anyhow = "1.0"

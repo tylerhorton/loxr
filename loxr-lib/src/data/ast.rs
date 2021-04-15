@@ -1,4 +1,4 @@
-use crate::token::Token;
+use super::token::Token;
 use std::fmt;
 
 #[derive(PartialEq, Clone, Debug)]
@@ -36,6 +36,10 @@ impl Expr {
 
     pub fn new_grouping(expr: Expr) -> Self {
         Expr::Grouping(Box::new(expr))
+    }
+
+    pub fn new_error() -> Self {
+        Expr::Error
     }
 }
 

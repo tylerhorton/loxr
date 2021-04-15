@@ -1,0 +1,10 @@
+[package]
+name = "loxr_lib"
+version = "0.1.0"
+authors = ["Tyler Horton <tylerhortonc@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+phf = { version = "0.8", features = ["macros"] }
+nom = "6.1"
+nom_locate = "3.0"

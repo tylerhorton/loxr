@@ -1,12 +1,5 @@
-[package]
-name = "loxr"
-version = "0.1.0"
-authors = ["Tyler Horton <tylerhortonc@gmail.com>"]
-edition = "2018"
-
-[dependencies]
-anyhow = "1.0"
-thiserror = "1.0"
-phf = { version = "0.8", features = ["macros"] }
-nom = "6.1"
-nom_locate = "3.0"
+[workspace]
+members = [
+    "./loxr-lib",
+    "./loxr-cli",
+]

@@ -1,5 +1,5 @@
+use crate::data::token::Token;
 use crate::location::{Location, ToLocation};
-use crate::token::Token;
 use std::ops::RangeBounds;
 // use nom::{
 //     error::ParseError, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Slice,
