@@ -11,8 +11,7 @@ use nom::{
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
-use std::cell::RefCell;
-use std::str::FromStr;
+use std::{cell::RefCell, str::FromStr};
 
 pub fn lex(source: &str) -> (Vec<Token>, Vec<Error>) {
     let errors = RefCell::new(Vec::new());

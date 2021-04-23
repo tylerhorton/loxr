@@ -17,10 +17,10 @@ pub trait ReportError {
     fn report_error(&self, error: Error);
 }
 
-pub fn expect<'a, I, F, E, T>(parser: F, error: E) -> impl Fn(I) -> IResult<I, Option<T>>
+pub fn expect<'a, I, F, E, T>(mut parser: F, error: E) -> impl FnMut(I) -> IResult<I, Option<T>>
 where
     I: ReportError + ToLocation + 'a,
-    F: Fn(I) -> IResult<I, T>,
+    F: FnMut(I) -> IResult<I, T>,
     E: ToString,
 {
     move |input| match parser(input) {

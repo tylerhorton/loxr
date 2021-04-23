@@ -1,14 +1,15 @@
 use super::input::TokenSpan;
 use crate::data::ast::Expr;
 use crate::data::token::{Token, TokenKind};
-use crate::error::Error;
+use crate::error::{expect, Error, ReportError};
+use crate::location::ToLocation;
 use nom::{
     branch::alt,
-    combinator::{map, value, verify},
+    combinator::{all_consuming, map, not, recognize, rest, verify},
     error::{Error as NomError, ErrorKind as NomErrorKind},
-    multi::many0,
-    sequence::{delimited, pair},
-    Err, IResult,
+    multi::{many0, many_till},
+    sequence::{delimited, pair, preceded, terminated},
+    Err, IResult, Slice,
 };
 use std::cell::RefCell;
 
@@ -24,7 +25,9 @@ pub fn parse(tokens: &[Token]) -> (Expr, Vec<Error>) {
 type ParseRes<'a> = IResult<TokenSpan<'a>, Expr>;
 
 fn expr(input: TokenSpan) -> ParseRes {
-    alt((equality, error))(input)
+    let expr = alt((equality, error));
+    let expr = terminated(expr, preceded(expect(not(any_token), "expected EOF"), rest));
+    all_consuming(expr)(input)
 }
 
 fn any_token(input: TokenSpan) -> IResult<TokenSpan, &Token> {
@@ -34,7 +37,7 @@ fn any_token(input: TokenSpan) -> IResult<TokenSpan, &Token> {
         index += 1;
         match token.kind {
             TokenKind::Comment(_) => continue,
-            _ => return Ok((input.index(index..), token)),
+            _ => return Ok((input.slice(index..), token)),
         }
     }
 
@@ -54,7 +57,15 @@ macro_rules! token_kind (
 );
 
 fn error(input: TokenSpan) -> ParseRes {
-    value(Expr::Error, any_token)(input)
+    let errors = recognize(many_till(any_token, token_kind!(TokenKind::Semicolon)));
+
+    let report_error = |s: TokenSpan| {
+        let err = Error::new(s.to_location(), format!("unexpected tokens: {:?}", s));
+        s.report_error(err);
+        Expr::new_error()
+    };
+
+    map(errors, report_error)(input)
 }
 
 fn equality(input: TokenSpan) -> ParseRes {
@@ -138,12 +149,16 @@ fn literal(input: TokenSpan) -> ParseRes {
 }
 
 fn grouping(input: TokenSpan) -> ParseRes {
-    map(
-        delimited(
-            token_kind!(TokenKind::LeftParen),
-            expr,
-            token_kind!(TokenKind::RightParen),
-        ),
-        Expr::new_grouping,
-    )(input)
+    let group = delimited(
+        token_kind!(TokenKind::LeftParen),
+        expect(expr, "expected expression after \'(\'"),
+        expect(token_kind!(TokenKind::RightParen), "expected \')\'"),
+    );
+
+    let check_group = |inner| match inner {
+        Some(expr) => Expr::new_grouping(expr),
+        None => Expr::new_error(),
+    };
+
+    map(group, check_group)(input)
 }
